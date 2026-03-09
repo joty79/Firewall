@@ -1,0 +1,8 @@
+Windows Registry Editor Version 5.00
+
+[HKEY_CLASSES_ROOT\exefile\shell\FirewallManager]
+@="Firewall Manager"
+"Icon"="d:\\Users\\joty79\\Documents\\Icons\\firewall.ico"
+
+[HKEY_CLASSES_ROOT\exefile\shell\FirewallManager\command]
+@="wt.exe -- pwsh.exe -NoProfile -ExecutionPolicy Bypass -File \"D:\\Users\\joty79\\scripts\\firewall\\FirewallMenu.ps1\" -TargetItem \"%1\""
