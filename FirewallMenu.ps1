@@ -32,7 +32,7 @@ $MetadataPath = Join-Path $AppRoot 'app-metadata.json'
 $InstallMetaPath = Join-Path $AppRoot 'state\install-meta.json'
 $InstallerLogPath = Join-Path $AppRoot 'logs\installer.log'
 $GitHubRepo = 'joty79/Firewall'
-$GitHubBranch = 'main'
+$GitHubBranch = 'master'
 $UpdateStatus = $null
 
 # -----------------------------------------------------------

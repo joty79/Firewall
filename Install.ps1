@@ -25,7 +25,7 @@ $script:ProfileJson = @'
   "install_folder_name": "FirewallContext",
   "github_repo": "joty79/Firewall",
   "app_metadata_file": "app-metadata.json",
-  "github_ref": "main",
+  "github_ref": "master",
   "legacy_root": "D:\\Users\\joty79\\scripts\\Firewall",
   "publisher": "joty79",
   "uninstall_key_name": "FirewallContext",
@@ -647,7 +647,7 @@ function ResolveGitHubRefAuto {
 
     $info = Get-GitHubRemoteInfo -Repo $GitHubRepo
     $preferred = [System.Collections.Generic.List[string]]::new()
-    foreach ($candidate in @($info.DefaultBranch, 'master', [string](Get-P 'github_ref' ''), 'latest')) {
+    foreach ($candidate in @([string](Get-P 'github_ref' ''), $info.DefaultBranch, 'main', 'master', 'latest')) {
         $name = NormalizeGitHubRef $candidate
         if (-not [string]::IsNullOrWhiteSpace($name) -and -not $preferred.Contains($name)) {
             $preferred.Add($name)

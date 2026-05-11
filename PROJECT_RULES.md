@@ -19,13 +19,13 @@
 - Files affected: `FirewallMenu.ps1`, `Launch-FirewallMenu.vbs`, `app-metadata.json`, `FirewallMenu.reg`, `Install.ps1`, `README.md`, `CHANGELOG.md`, `PROJECT_RULES.md`, `D:\\Users\\joty79\\scripts\\InstallerCore\\profiles\\Firewall.json`, `D:\\Users\\joty79\\scripts\\InstallerCore\\templates\\Install.Template.ps1`.
 - Validation/tests run: `InstallerCore\\scripts\\New-ToolInstaller.ps1` regeneration; PowerShell parser validation for `FirewallMenu.ps1`, generated `Install.ps1`, `InstallerCore\\templates\\Install.Template.ps1`, and `InstallerCore\\scripts\\New-ToolInstaller.ps1`; JSON validation for `InstallerCore\\profiles\\Firewall.json` and `app-metadata.json`; static verification for `RegistryRepair`, `EncodedCommand`, `NoSelfRelaunch`, `github_commit`, VBS launcher registry command, update UI strings, interactive failure pause, and firewall-disabled warning.
 
-### Entry - 2026-05-11 (Installer GitHub ref must stay on main)
+### Entry - 2026-05-11 (Installer GitHub ref must stay on master)
 - Date: 2026-05-11
 - Problem: Interactive install downloaded `https://codeload.github.com/joty79/Firewall/zip/refs/heads/master` and failed with `Downloaded package does not contain required files.`
-- Root cause: `InstallerCore\\profiles\\Firewall.json` left `github_ref` empty while the repo's active/default branch is `main`, allowing the installer fallback path to try obsolete `master`.
-- Guardrail/rule: Keep `github_ref` explicitly set to `main` in the Firewall InstallerCore profile and aligned with `app-metadata.json`.
-- Files affected: `D:\\Users\\joty79\\scripts\\InstallerCore\\profiles\\Firewall.json`, `Install.ps1`, `CHANGELOG.md`, `PROJECT_RULES.md`.
-- Validation/tests run: Regenerated `Install.ps1` from InstallerCore; parser validation on generated installer; static verification that embedded `github_ref` is `main`.
+- Root cause: New local work had landed on `main` while the GitHub repository's canonical/default branch is `master`, so the remote `master` package was stale.
+- Guardrail/rule: Keep `github_ref` explicitly set to `master` in the Firewall InstallerCore profile, `app-metadata.json`, and in-app update checks. InstallerCore GitHub ref auto-detection must prefer explicit profile `github_ref` before remote/default branch guesses.
+- Files affected: `D:\\Users\\joty79\\scripts\\InstallerCore\\profiles\\Firewall.json`, `D:\\Users\\joty79\\scripts\\InstallerCore\\templates\\Install.Template.ps1`, `Install.ps1`, `CHANGELOG.md`, `PROJECT_RULES.md`.
+- Validation/tests run: Regenerated `Install.ps1` from InstallerCore; parser validation on generated installer and InstallerCore template; static verification that embedded `github_ref` is `master` and auto-detection prioritizes profile ref before branch guesses.
 
 ### Entry - 2026-03-09 (InstallerCore onboarding)
 - Date: 2026-03-09
