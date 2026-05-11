@@ -15,8 +15,9 @@
 
 | # | Tool | Description |
 |:-:|------|-------------|
-| 🔒 | **[FirewallMenu.ps1](#-firewallmenups1)** | Elevated PowerShell menu that creates, removes, and inspects per-app firewall rules. |
-| 🧩 | **[FirewallMenu.reg](#-firewallmenureg)** | Registry entry that adds the context-menu command for `.exe` files. |
+| 🔒 | **[FirewallMenu.ps1](#-firewallmenups1)** | Elevated PowerShell menu that creates, removes, inspects, and updates per-app firewall tooling. |
+| 👻 | **[Launch-FirewallMenu.vbs](#-launch-firewallmenuvbs)** | Hidden Explorer launcher that opens one elevated Windows Terminal session without the brief first-window flash. |
+| 🧩 | **[FirewallMenu.reg](#-firewallmenureg)** | Registry reference artifact for the `.exe` context-menu command. |
 
 ## 🔒 FirewallMenu.ps1
 
@@ -44,12 +45,16 @@ Explorer context menu
  FirewallMenu.ps1
         |
         +--> Fast status check by DisplayName prefix
+        +--> Active firewall profile warning
         +--> Toggle inbound/outbound block rules
         +--> Deep scan by application filter path
+        +--> Update app through InstallerCore/git
         '--> Search/list rules created by this tool
 ```
 
 This approach is faster than editing Windows Firewall manually because it keeps the workflow centered on the selected executable.
+
+The header also shows whether Windows Firewall is enabled for the active network profile. If the firewall is disabled, created block rules can still exist but Windows will not enforce them until the profile firewall is enabled again.
 
 ### Usage
 
@@ -68,6 +73,38 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File "D:\Users\joty79\scripts\Firewall\
 |-----------|------|---------|-------------|
 | `-TargetItem` | `string` | none | Full path to the target executable that should be inspected or blocked/unblocked. |
 
+### Update App
+
+The menu includes **Update app**. In an installed copy, it uses the generated `Install.ps1` backend with `UpdateGitHub`. In a git working copy, it uses a repo-aware `git fetch` plus `git pull --ff-only` path and refuses to update when local changes are present.
+
+The update screen shows the current version, current commit, latest remote commit, progress output, recent installer log output, and failure exit codes. It does not reuse a stale `UpToDate` cache when a fresh remote check fails.
+
+## 👻 Launch-FirewallMenu.vbs
+
+> A hidden Explorer handoff that opens Firewall Manager directly in an elevated Windows Terminal host.
+
+### The Problem
+- Launching `wt.exe` directly from the registry could show a brief first window before the script relaunched elevated.
+- Firewall rule changes require Administrator rights, so the final host must still be elevated.
+- The selected `.exe` path must be passed safely through the context-menu command.
+
+### The Solution
+
+The registry command starts `wscript.exe`, and the VBS launcher uses `ShellExecute ... "runas"` to open `wt.exe` with the selected target. `FirewallMenu.ps1` then starts already elevated, so the visible experience is a single elevated terminal session.
+
+```text
+Explorer context menu
+        |
+        v
+ wscript.exe Launch-FirewallMenu.vbs "%1"
+        |
+        v
+ ShellExecute wt.exe ... "runas"
+        |
+        v
+ FirewallMenu.ps1 -TargetItem "%1"
+```
+
 ## 🧩 FirewallMenu.reg
 
 > A Windows Registry artifact that adds the script to the `exefile` context menu.
@@ -79,7 +116,7 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File "D:\Users\joty79\scripts\Firewall\
 
 ### The Solution
 
-The `.reg` file creates a `Firewall Manager` shell command under `HKEY_CLASSES_ROOT\exefile\shell` and launches the PowerShell script through Windows Terminal. The current version still points to a machine-local icon and script path, so it should be treated as a development artifact until the repo is onboarded to `InstallerCore`.
+The `.reg` file creates a `Firewall Manager` shell command under `HKEY_CLASSES_ROOT\exefile\shell` and launches the hidden VBS wrapper. The portable install path is still the generated `Install.ps1`, which writes HKCU context-menu keys with `{InstallRoot}`-based paths and handles broad HKCU/HKCR cleanup through InstallerCore.
 
 ```text
 HKEY_CLASSES_ROOT\exefile\shell\FirewallManager
@@ -88,10 +125,10 @@ HKEY_CLASSES_ROOT\exefile\shell\FirewallManager
         +--> Icon path
         '--> command
                |
-               '--> wt.exe -- pwsh.exe -File FirewallMenu.ps1 -TargetItem "%1"
+               '--> wscript.exe Launch-FirewallMenu.vbs "%1"
 ```
 
-Using a `.reg` artifact keeps the Explorer integration simple, but portability requires repo-local assets and a generated installer.
+Using a `.reg` artifact keeps the Explorer integration readable during development, but the generated installer is the source of truth for install, update, uninstall, registry verification, and protected cleanup repair.
 
 ## 📦 Installation
 
@@ -102,6 +139,9 @@ git clone https://github.com/joty79/Firewall.git
 
 # Preferred: run the generated installer
 pwsh -NoProfile -ExecutionPolicy Bypass -File .\Install.ps1
+
+# Update an installed copy from GitHub
+pwsh -NoProfile -ExecutionPolicy Bypass -File .\Install.ps1 -Action UpdateGitHub -Force -NoExplorerRestart
 
 # One-off direct script test
 pwsh -NoProfile -ExecutionPolicy Bypass -File .\FirewallMenu.ps1 -TargetItem "C:\Apps\Example\App.exe"
@@ -114,7 +154,7 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File .\FirewallMenu.ps1 -TargetItem "C:
 | **OS** | Windows 10 or Windows 11 |
 | **Runtime** | PowerShell 7 |
 | **Privileges** | Administrator rights are required when managing firewall rules |
-| **Explorer integration** | Windows Terminal (`wt.exe`) must be available for the current `.reg` command |
+| **Explorer integration** | Windows Terminal (`wt.exe`) is preferred; `pwsh.exe`, `wscript.exe`, and `reg.exe` are used by the install/launch flow |
 
 ## 📁 Project Structure
 
@@ -127,8 +167,10 @@ Firewall/
 │   └── icons/
 │       └── firewall.ico # Repo-owned icon used by the installed context menu
 ├── .gitignore        # Basic local ignores
+├── app-metadata.json # App identity/version used by InstallerCore and update status
 ├── Install.ps1       # Generated InstallerCore-based installer entrypoint
 ├── FirewallMenu.ps1  # Interactive firewall rule manager
+├── Launch-FirewallMenu.vbs # Hidden elevated Windows Terminal launcher
 ├── FirewallMenu.reg  # Explorer context-menu registration artifact
 ├── PROJECT_RULES.md  # Project-specific memory and guardrails
 └── README.md         # You are here
@@ -137,9 +179,16 @@ Firewall/
 ## 🧠 Technical Notes
 
 <details>
-<summary><b>Why does the script relaunch itself as Administrator?</b></summary>
+<summary><b>Why does the launcher use VBS?</b></summary>
 
-Managing Windows Firewall rules requires **elevated privileges**. The script checks the current token first and relaunches itself through **Windows Terminal** with `RunAs` when needed.
+Explorer context-menu commands can briefly flash a console when they call PowerShell or Windows Terminal directly. The VBS wrapper stays hidden and asks Windows to open the final `wt.exe` host elevated, so the visible path is a single Firewall Manager window.
+
+</details>
+
+<details>
+<summary><b>Why does the script still check for Administrator?</b></summary>
+
+Managing Windows Firewall rules requires **elevated privileges**. The VBS launcher normally starts the script elevated, but direct terminal runs are still supported, so the script keeps a fallback Administrator relaunch check.
 
 </details>
 
@@ -161,6 +210,13 @@ The checked-in registry file is kept as a reference artifact, but the portable i
 <summary><b>What does Deep Scan do differently from the fast status check?</b></summary>
 
 The fast check only looks for rules by **DisplayName prefix**, which is nearly instant. Deep Scan inspects the **application filter path** on all firewall rules to detect matches created by other tools or manual configuration.
+
+</details>
+
+<details>
+<summary><b>Why does the menu warn when Windows Firewall is disabled?</b></summary>
+
+Firewall rules can be created successfully while the active Windows Firewall profile is disabled, but Windows will not enforce those rules until the profile firewall is enabled. The header warning makes that state visible before you wonder why a new block did not take effect.
 
 </details>
 
