@@ -25,7 +25,7 @@ $script:ProfileJson = @'
   "install_folder_name": "FirewallContext",
   "github_repo": "joty79/Firewall",
   "app_metadata_file": "app-metadata.json",
-  "github_ref": "",
+  "github_ref": "main",
   "legacy_root": "D:\\Users\\joty79\\scripts\\Firewall",
   "publisher": "joty79",
   "uninstall_key_name": "FirewallContext",
@@ -233,6 +233,17 @@ function Confirm([string]$Prompt) {
     $response = Read-Host "$Prompt [y/N]"
     if ($null -eq $response) { return $false }
     return ($response.Trim().ToLowerInvariant() -eq 'y')
+}
+
+function Complete-InstallerRun([int]$ExitCode) {
+    if ($ExitCode -ne 0 -and -not $script:HasCliArgs) {
+        Write-Host ''
+        Write-Host ("Installer failed with exit code {0}." -f $ExitCode) -ForegroundColor Red
+        Write-Host ("Log: {0}" -f $script:InstallerLogPath) -ForegroundColor Yellow
+        Write-Host 'Press Enter to close this window...' -ForegroundColor Gray
+        try { [void](Read-Host) } catch {}
+    }
+    exit $ExitCode
 }
 
 function Test-IsElevated {
@@ -1217,12 +1228,12 @@ function PreparePackageSource([ValidateSet('Install', 'Update')] [string]$Mode) 
 
 if (-not $script:HasCliArgs) { $menuAction = ShowMenu; if ($menuAction -eq 'Exit') { exit 0 }; $Action = $menuAction }
 switch ($Action) {
-    'Install' { PreparePackageSource -Mode 'Install'; if (-not (Confirm "Install $($script:DisplayName) to '$InstallPath'?")) { Write-Host 'Cancelled.' -ForegroundColor Yellow; exit 0 }; exit (RunInstallOrUpdate -Mode 'Install') }
-    'InstallGitHub' { $PackageSource = 'GitHub'; EnsureGitHubRefResolved; Write-Host ("Using GitHub ref: {0}" -f $GitHubRef) -ForegroundColor DarkCyan; if (-not (Confirm "Install $($script:DisplayName) to '$InstallPath'?")) { Write-Host 'Cancelled.' -ForegroundColor Yellow; exit 0 }; exit (RunInstallOrUpdate -Mode 'Install') }
-    'Update' { PreparePackageSource -Mode 'Update'; if (-not (Confirm "Update existing $($script:DisplayName) at '$InstallPath'?")) { Write-Host 'Cancelled.' -ForegroundColor Yellow; exit 0 }; exit (RunInstallOrUpdate -Mode 'Update') }
-    'UpdateGitHub' { $PackageSource = 'GitHub'; EnsureGitHubRefResolved; Write-Host ("Using GitHub ref: {0}" -f $GitHubRef) -ForegroundColor DarkCyan; if (-not (Confirm "Update existing $($script:DisplayName) at '$InstallPath'?")) { Write-Host 'Cancelled.' -ForegroundColor Yellow; exit 0 }; exit (RunInstallOrUpdate -Mode 'Update') }
-    'Uninstall' { if (-not (Confirm "Uninstall $($script:DisplayName) from '$InstallPath'?")) { Write-Host 'Cancelled.' -ForegroundColor Yellow; exit 0 }; exit (RunUninstall) }
-    'RegistryRepair' { exit (RunRegistryRepair) }
+    'Install' { PreparePackageSource -Mode 'Install'; if (-not (Confirm "Install $($script:DisplayName) to '$InstallPath'?")) { Write-Host 'Cancelled.' -ForegroundColor Yellow; exit 0 }; Complete-InstallerRun (RunInstallOrUpdate -Mode 'Install') }
+    'InstallGitHub' { $PackageSource = 'GitHub'; EnsureGitHubRefResolved; Write-Host ("Using GitHub ref: {0}" -f $GitHubRef) -ForegroundColor DarkCyan; if (-not (Confirm "Install $($script:DisplayName) to '$InstallPath'?")) { Write-Host 'Cancelled.' -ForegroundColor Yellow; exit 0 }; Complete-InstallerRun (RunInstallOrUpdate -Mode 'Install') }
+    'Update' { PreparePackageSource -Mode 'Update'; if (-not (Confirm "Update existing $($script:DisplayName) at '$InstallPath'?")) { Write-Host 'Cancelled.' -ForegroundColor Yellow; exit 0 }; Complete-InstallerRun (RunInstallOrUpdate -Mode 'Update') }
+    'UpdateGitHub' { $PackageSource = 'GitHub'; EnsureGitHubRefResolved; Write-Host ("Using GitHub ref: {0}" -f $GitHubRef) -ForegroundColor DarkCyan; if (-not (Confirm "Update existing $($script:DisplayName) at '$InstallPath'?")) { Write-Host 'Cancelled.' -ForegroundColor Yellow; exit 0 }; Complete-InstallerRun (RunInstallOrUpdate -Mode 'Update') }
+    'Uninstall' { if (-not (Confirm "Uninstall $($script:DisplayName) from '$InstallPath'?")) { Write-Host 'Cancelled.' -ForegroundColor Yellow; exit 0 }; Complete-InstallerRun (RunUninstall) }
+    'RegistryRepair' { Complete-InstallerRun (RunRegistryRepair) }
     'DownloadLatest' {
         $downloadPrompt = if ($NoSelfRelaunch) {
             "Download latest $($script:DisplayName) into '$PSScriptRoot'?"
@@ -1231,7 +1242,7 @@ switch ($Action) {
             "Download latest $($script:DisplayName) into '$PSScriptRoot' and relaunch the updated installer?"
         }
         if (-not (Confirm $downloadPrompt)) { Write-Host 'Cancelled.' -ForegroundColor Yellow; exit 0 }
-        exit (RunDownloadLatest)
+        Complete-InstallerRun (RunDownloadLatest)
     }
     'OpenInstallDirectory' { if (-not (Test-Path -LiteralPath $InstallPath)) { Write-Host ("Install directory not found: {0}" -f $InstallPath) -ForegroundColor Yellow; exit 1 }; Start-Process explorer.exe -ArgumentList $InstallPath; exit 0 }
     'OpenInstallLogs' { $logFile = Join-Path $InstallPath 'logs\\installer.log'; $logDir = Split-Path -Path $logFile -Parent; EnsureDir $logDir; if (Test-Path -LiteralPath $logFile) { Start-Process notepad.exe -ArgumentList $logFile } else { Start-Process explorer.exe -ArgumentList $logDir }; exit 0 }

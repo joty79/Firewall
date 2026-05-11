@@ -2,6 +2,8 @@
 
 ## 2026-05-11
 
+- Fixed the InstallerCore profile to use GitHub ref `main` so installs no longer download the obsolete `master` branch archive.
+- Added an interactive installer failure pause through the latest InstallerCore template so errors remain visible with the installer log path instead of the window closing immediately.
 - Regenerated `Install.ps1` from the latest `InstallerCore` profile/template flow.
 - Added `app-metadata.json` and wired the InstallerCore profile to deploy and verify it.
 - Added `Launch-FirewallMenu.vbs` so Explorer context-menu launches go through a hidden elevated Windows Terminal handoff instead of flashing a brief first window.
