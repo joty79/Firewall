@@ -328,11 +328,7 @@ function Show-InteractiveRules {
             }
             $RuleData += [pscustomobject]@{
                 DisplayName = $r.DisplayName
-                Direction = $r.Direction
-                Action = $r.Action
                 Folder = $dir
-                Path = $path
-                RuleObj = $r
             }
         }
         
@@ -344,24 +340,49 @@ function Show-InteractiveRules {
         }
         $folderOptions += "🔙 Back"
         
-        $header = { Write-UiBanner -Title "FIREWALL RULES" -Subtitle "Select a folder to view affected files" }
+        $header = { Write-UiBanner -Title "FIREWALL RULES" -Subtitle "Select a folder to view or manage affected files" }
         $folderChoice = Invoke-ArrowMenu -Items $folderOptions -Title "Blocked Folders" -HeaderBlock $header
         
         if ($null -eq $folderChoice -or $folderChoice -eq "🔙 Back") { return }
         
         $selectedFolderGroup = $Grouped | Where-Object { "📁 $($_.Name) ($($_.Group.Count) rules)" -eq $folderChoice }
         if ($selectedFolderGroup) {
-            Show-FolderRulesInteractive -Group $selectedFolderGroup
+            Show-FolderRulesInteractive -FolderPath $selectedFolderGroup.Name
         }
     }
 }
 
 function Show-FolderRulesInteractive {
-    param($Group)
+    param([string]$FolderPath)
     
     while ($true) {
-        $files = $Group.Group | Group-Object Path | Sort-Object Name
+        $All = Get-NetFirewallRule -DisplayName "${RulePrefix}*" -ErrorAction SilentlyContinue
+        if (-not $All) { return }
+        
+        $folderRules = @()
+        foreach ($r in $All) {
+            $filter = $r | Get-NetFirewallApplicationFilter -ErrorAction SilentlyContinue
+            $path = $filter.Program
+            if ($path) {
+                $dir = Split-Path -Path $path -Parent -ErrorAction SilentlyContinue
+                if ($dir -eq $FolderPath) {
+                    $folderRules += [pscustomobject]@{
+                        RuleObj = $r
+                        Path = $path
+                        Direction = $r.Direction
+                        Name = $r.Name
+                    }
+                }
+            }
+        }
+        
+        if ($folderRules.Count -eq 0) { return } # All rules deleted, go back
+        
+        $files = $folderRules | Group-Object Path | Sort-Object Name
         $fileOptions = @()
+        $fileOptions += "⚡ UNBLOCK ALL (Remove all rules in this folder)"
+        
+        $fileMap = @{}
         foreach ($f in $files) {
             $fname = Split-Path -Path $f.Name -Leaf -ErrorAction SilentlyContinue
             $inRule = ($f.Group | Where-Object Direction -eq 'Inbound') -ne $null
@@ -371,14 +392,34 @@ function Show-FolderRulesInteractive {
             elseif ($inRule) { $status = "[IN ONLY]" }
             elseif ($outRule) { $status = "[OUT ONLY]" }
             
-            $fileOptions += "📄 $fname $status"
+            $label = "📄 $fname $status"
+            $fileOptions += $label
+            $fileMap[$label] = $f.Group
         }
         $fileOptions += "🔙 Back"
         
-        $header = { Write-UiBanner -Title "FOLDER RULES" -Subtitle $Group.Name }
-        $fileChoice = Invoke-ArrowMenu -Items $fileOptions -Title "Affected Executables (Press Enter/Esc to go back)" -HeaderBlock $header
+        $header = { Write-UiBanner -Title "FOLDER RULES" -Subtitle $FolderPath }
+        $fileChoice = Invoke-ArrowMenu -Items $fileOptions -Title "Select an executable to UNBLOCK it" -HeaderBlock $header
         
         if ($null -eq $fileChoice -or $fileChoice -eq "🔙 Back") { return }
+        
+        if ($fileChoice -eq "⚡ UNBLOCK ALL (Remove all rules in this folder)") {
+            foreach ($r in $folderRules) {
+                Remove-NetFirewallRule -Name $r.Name -ErrorAction SilentlyContinue
+            }
+            Write-Host "`n✅ All rules for this folder have been removed." -ForegroundColor Green
+            Start-Sleep -Seconds 1
+            return
+        }
+        
+        $rulesToDelete = $fileMap[$fileChoice]
+        if ($rulesToDelete) {
+            foreach ($r in $rulesToDelete) {
+                Remove-NetFirewallRule -Name $r.Name -ErrorAction SilentlyContinue
+            }
+            Write-Host "`n✅ Rule(s) removed for $($rulesToDelete[0].Path)" -ForegroundColor Green
+            Start-Sleep -Seconds 1
+        }
     }
 }
 
