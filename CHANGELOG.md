@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-05-14
+
+- Bumped `app-metadata.json` to `0.2.1` for the shared System Tools menu correction.
+- Regenerated `Install.ps1` from `InstallerCore` so Firewall Rules installs under `System Tools > Windows` for `.exe` files.
+
 ## 2026-05-11
 
 - Updated InstallerCore GitHub ref auto-detection priority so the explicit profile `github_ref` is preferred before remote/default `master`.

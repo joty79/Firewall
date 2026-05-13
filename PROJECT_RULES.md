@@ -34,3 +34,12 @@
 - Guardrail/rule: Keep `Firewall` onboarded to `InstallerCore`. Runtime assets must stay in-repo under `.assets`, and `Install.ps1` must be regenerated from `InstallerCore` profile/template instead of hand-written.
 - Files affected: `.assets\\icons\\firewall.ico`, `Install.ps1`, `README.md`, `PROJECT_RULES.md`.
 - Validation/tests run: Profile generation via `InstallerCore\\scripts\\New-ToolInstaller.ps1`; PowerShell parser validation on generated `Install.ps1` and `FirewallMenu.ps1`.
+
+### Entry - 2026-05-14 (Shared System Tools Windows category)
+
+- Date: 2026-05-14
+- Problem: The shared category formerly named `Apps & Windows` was renamed to `Windows`.
+- Root cause: The visible menu needed a shorter and broader category name for Windows/app utilities.
+- Guardrail/rule: `Firewall` remains child-only under `SystemTools\shell\Windows\shell\FirewallManager` for `exefile` branches. Keep cleanup for old `AppsWindows` child paths during migration.
+- Files affected: `Install.ps1`, `app-metadata.json`, `CHANGELOG.md`, `PROJECT_RULES.md`, `D:\Users\joty79\scripts\InstallerCore\profiles\Firewall.json`.
+- Validation/tests run: Pending parser validation, local-source install, and HKCU registry readback after regeneration.

@@ -71,26 +71,28 @@ $script:ProfileJson = @'
   "registry_cleanup_keys": [
     "HKCR\\exefile\\shell\\FirewallManager",
     "HKCU\\Software\\Classes\\exefile\\shell\\FirewallManager",
-    "HKCR\\exefile\\shell\\SystemTools\\shell\\AppsWindows\\shell\\FirewallManager",
-    "HKCU\\Software\\Classes\\exefile\\shell\\SystemTools\\shell\\AppsWindows\\shell\\FirewallManager",
+    "HKCR\\exefile\\shell\\SystemTools\\shell\\Windows\\shell\\FirewallManager",
+    "HKCU\\Software\\Classes\\exefile\\shell\\SystemTools\\shell\\Windows\\shell\\FirewallManager",
     "HKCR\\Applications\\FirewallMenu.ps1",
-    "HKCU\\Software\\Classes\\Applications\\FirewallMenu.ps1"
+    "HKCU\\Software\\Classes\\Applications\\FirewallMenu.ps1",
+    "HKCR\\exefile\\shell\\SystemTools\\shell\\AppsWindows\\shell\\FirewallManager",
+    "HKCU\\Software\\Classes\\exefile\\shell\\SystemTools\\shell\\AppsWindows\\shell\\FirewallManager"
   ],
   "registry_values": [
     {
-      "key": "HKCU\\Software\\Classes\\exefile\\shell\\SystemTools\\shell\\AppsWindows\\shell\\FirewallManager",
+      "key": "HKCU\\Software\\Classes\\exefile\\shell\\SystemTools\\shell\\Windows\\shell\\FirewallManager",
       "name": "(default)",
       "type": "REG_SZ",
       "value": "Firewall Rules"
     },
     {
-      "key": "HKCU\\Software\\Classes\\exefile\\shell\\SystemTools\\shell\\AppsWindows\\shell\\FirewallManager",
+      "key": "HKCU\\Software\\Classes\\exefile\\shell\\SystemTools\\shell\\Windows\\shell\\FirewallManager",
       "name": "Icon",
       "type": "REG_SZ",
       "value": "{InstallRoot}\\.assets\\icons\\firewall.ico"
     },
     {
-      "key": "HKCU\\Software\\Classes\\exefile\\shell\\SystemTools\\shell\\AppsWindows\\shell\\FirewallManager\\command",
+      "key": "HKCU\\Software\\Classes\\exefile\\shell\\SystemTools\\shell\\Windows\\shell\\FirewallManager\\command",
       "name": "(default)",
       "type": "REG_SZ",
       "value": "wscript.exe \"{InstallRoot}\\Launch-FirewallMenu.vbs\" \"%1\""
@@ -98,17 +100,17 @@ $script:ProfileJson = @'
   ],
   "registry_verify": [
     {
-      "key": "HKCU\\Software\\Classes\\exefile\\shell\\SystemTools\\shell\\AppsWindows\\shell\\FirewallManager",
+      "key": "HKCU\\Software\\Classes\\exefile\\shell\\SystemTools\\shell\\Windows\\shell\\FirewallManager",
       "name": "(default)",
       "expected": "Firewall Rules"
     },
     {
-      "key": "HKCU\\Software\\Classes\\exefile\\shell\\SystemTools\\shell\\AppsWindows\\shell\\FirewallManager",
+      "key": "HKCU\\Software\\Classes\\exefile\\shell\\SystemTools\\shell\\Windows\\shell\\FirewallManager",
       "name": "Icon",
       "expected": "{InstallRoot}\\.assets\\icons\\firewall.ico"
     },
     {
-      "key": "HKCU\\Software\\Classes\\exefile\\shell\\SystemTools\\shell\\AppsWindows\\shell\\FirewallManager\\command",
+      "key": "HKCU\\Software\\Classes\\exefile\\shell\\SystemTools\\shell\\Windows\\shell\\FirewallManager\\command",
       "name": "(default)",
       "expected": "wscript.exe \"{InstallRoot}\\Launch-FirewallMenu.vbs\" \"%1\""
     }
@@ -794,6 +796,8 @@ function Deploy([string]$SourceRoot, [string]$InstallRoot) {
 
 function PatchWrappers([string]$InstallRoot) {
     foreach ($p in @((Get-P 'wrapper_patches' @()))) {
+        if ($null -eq $p) { continue }
+        if (-not ($p.PSObject.Properties['file']) -or -not ($p.PSObject.Properties['regex'])) { continue }
         $fileRel = [string]$p.file; $regex = [string]$p.regex; $repRaw = [string]$p.replacement
         if ([string]::IsNullOrWhiteSpace($fileRel) -or [string]::IsNullOrWhiteSpace($regex)) { continue }
         $target = Join-Path $InstallRoot $fileRel
