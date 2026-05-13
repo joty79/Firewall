@@ -13,6 +13,16 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 }
 
 # -----------------------------------------------------------
+# 🔵 Load TUI Blueprint
+# -----------------------------------------------------------
+$BlueprintPath = "C:\Users\joty79\.agent-shared\templates\PS_UI_Blueprint.psm1"
+if (Test-Path -LiteralPath $BlueprintPath) {
+    . $BlueprintPath
+} else {
+    Write-Warning "UI Blueprint not found at $BlueprintPath. UI features may fail."
+}
+
+# -----------------------------------------------------------
 # 🔵 Initialization
 # -----------------------------------------------------------
 # 🔸 FIX: Use -LiteralPath to handle [brackets] correctly
@@ -248,13 +258,14 @@ function Get-FastStatus {
             $BlockedCount++
         }
     }
-    if ($BlockedCount -gt 0) {
-        Write-Host " [ BLOCKED BY US ($BlockedCount/$($ExeFiles.Count)) ] " -NoNewline -ForegroundColor White -BackgroundColor Red
-    } else {
-        Write-Host " [ ALLOWED (BY US) ] " -NoNewline -ForegroundColor Black -BackgroundColor Green
-    }
+    
     $targetDesc = if ($IsFolder) { "Folder: $FileName ($($ExeFiles.Count) EXEs)" } else { "File: $FileName" }
-    Write-Host " Target: $targetDesc" -ForegroundColor Gray
+    
+    if ($BlockedCount -gt 0) {
+        Write-Host "  $($_C.Fail)$($_C.Bold)[ BLOCKED BY US ($BlockedCount/$($ExeFiles.Count)) ]$($_C.Reset) $($_C.Dim)Target: $targetDesc$($_C.Reset)"
+    } else {
+        Write-Host "  $($_C.OK)$($_C.Bold)[ ALLOWED (BY US) ]$($_C.Reset) $($_C.Dim)Target: $targetDesc$($_C.Reset)"
+    }
 }
 
 function Do-DeepScan {
@@ -313,11 +324,15 @@ function Toggle-Block {
     Start-Sleep -Seconds 1
 }
 
-function Show-All-My-Rules {
-    Clear-Host
-    Write-Host "🔵 All Rules Created by This Script:`n" -ForegroundColor Cyan
-    $All = Get-NetFirewallRule -DisplayName "${RulePrefix}*" -ErrorAction SilentlyContinue
-    if ($All) {
+function Show-InteractiveRules {
+    while ($true) {
+        $All = Get-NetFirewallRule -DisplayName "${RulePrefix}*" -ErrorAction SilentlyContinue
+        if (-not $All) {
+            Write-Host "`n⚠️ No rules created by this script yet." -ForegroundColor Yellow
+            Pause-Menu
+            return
+        }
+        
         $RuleData = @()
         foreach ($r in $All) {
             $filter = $r | Get-NetFirewallApplicationFilter -ErrorAction SilentlyContinue
@@ -332,18 +347,55 @@ function Show-All-My-Rules {
                 Direction = $r.Direction
                 Action = $r.Action
                 Folder = $dir
+                Path = $path
+                RuleObj = $r
             }
         }
         
-        $Grouped = $RuleData | Group-Object Folder
+        $Grouped = $RuleData | Group-Object Folder | Sort-Object Name
+        
+        $folderOptions = @()
         foreach ($group in $Grouped) {
-            Write-Host "`n📁 $($group.Name)" -ForegroundColor Magenta
-            $group.Group | Select-Object DisplayName, Direction, Action | Format-Table -AutoSize
+            $folderOptions += "📁 $($group.Name) ($($group.Group.Count) rules)"
         }
-    } else {
-        Write-Host "⚠️ No rules created by this script yet." -ForegroundColor Yellow
+        $folderOptions += "🔙 Back"
+        
+        $header = { Write-UiBanner -Title "FIREWALL RULES" -Subtitle "Select a folder to view affected files" }
+        $folderChoice = Invoke-ArrowMenu -Items $folderOptions -Title "Blocked Folders" -HeaderBlock $header
+        
+        if ($null -eq $folderChoice -or $folderChoice -eq "🔙 Back") { return }
+        
+        $selectedFolderGroup = $Grouped | Where-Object { "📁 $($_.Name) ($($_.Group.Count) rules)" -eq $folderChoice }
+        if ($selectedFolderGroup) {
+            Show-FolderRulesInteractive -Group $selectedFolderGroup
+        }
     }
-    Pause-Menu
+}
+
+function Show-FolderRulesInteractive {
+    param($Group)
+    
+    while ($true) {
+        $files = $Group.Group | Group-Object Path | Sort-Object Name
+        $fileOptions = @()
+        foreach ($f in $files) {
+            $fname = Split-Path -Path $f.Name -Leaf -ErrorAction SilentlyContinue
+            $inRule = ($f.Group | Where-Object Direction -eq 'Inbound') -ne $null
+            $outRule = ($f.Group | Where-Object Direction -eq 'Outbound') -ne $null
+            $status = ""
+            if ($inRule -and $outRule) { $status = "[IN+OUT]" }
+            elseif ($inRule) { $status = "[IN ONLY]" }
+            elseif ($outRule) { $status = "[OUT ONLY]" }
+            
+            $fileOptions += "📄 $fname $status"
+        }
+        $fileOptions += "🔙 Back"
+        
+        $header = { Write-UiBanner -Title "FOLDER RULES" -Subtitle $Group.Name }
+        $fileChoice = Invoke-ArrowMenu -Items $fileOptions -Title "Affected Executables (Press Enter/Esc to go back)" -HeaderBlock $header
+        
+        if ($null -eq $fileChoice -or $fileChoice -eq "🔙 Back") { return }
+    }
 }
 
 function Search-My-Rules {
@@ -468,36 +520,38 @@ $UpdateStatus = Get-UpdateStatus
 # -----------------------------------------------------------
 # 🔵 Main Loop
 # -----------------------------------------------------------
-do {
-    Clear-Host
-    Write-Host "🔵 FIREWALL MANAGER" -ForegroundColor Cyan
-    Write-Host "--------------------------------" -ForegroundColor Gray
-    Get-FastStatus
-    $firewallStatus = Get-ActiveFirewallProfileStatus
-    if ($firewallStatus.IsDisabled) {
-        Write-Host "⚠️ $($firewallStatus.Text)" -ForegroundColor Yellow
-        Write-Host "   $($firewallStatus.Detail)" -ForegroundColor Yellow
-    } else {
-        Write-Host "✅ $($firewallStatus.Text)" -ForegroundColor Green
+$options = @(
+    "⚡ Toggle Block/Allow (Instant)",
+    "🐢 Deep Scan (Check external rules)",
+    "📋 List/Manage ALL rules (Interactive)",
+    "🔎 Search inside our rules",
+    "🔄 Update app",
+    "🚪 Quit"
+)
+
+while ($true) {
+    $header = {
+        Write-UiBanner -Title "FIREWALL MANAGER" -Subtitle "v$($UpdateStatus.Version) · $($UpdateStatus.Message)"
+        Get-FastStatus
+        
+        $firewallStatus = Get-ActiveFirewallProfileStatus
+        if ($firewallStatus.IsDisabled) {
+            Write-Host "  $($_C.Warn)$($firewallStatus.Text)$($_C.Reset)"
+            Write-Host "  $($_C.Dim)$($firewallStatus.Detail)$($_C.Reset)"
+        } else {
+            Write-Host "  $($_C.OK)$($firewallStatus.Text)$($_C.Reset)"
+        }
     }
-    Write-Host "$($UpdateStatus.Message) · v$($UpdateStatus.Version)" -ForegroundColor DarkGray
-    Write-Host "--------------------------------`n" -ForegroundColor Gray
 
-    Write-Host "1. ⚡ Toggle Block/Allow (Instant)" -ForegroundColor White
-    Write-Host "2. 🐢 Deep Scan (Check external rules)" -ForegroundColor Yellow
-    Write-Host "3. 📋 List ALL rules created by script" -ForegroundColor Gray
-    Write-Host "4. 🔎 Search inside our rules" -ForegroundColor Gray
-    Write-Host "5. 🔄 Update app" -ForegroundColor Gray
-    Write-Host "Q.    Quit" -ForegroundColor DarkGray
+    $choice = Invoke-ArrowMenu -Items $options -Title "Main Menu" -HeaderBlock $header
 
-    $Choice = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown").Character.ToString().ToUpper()
-
-    switch ($Choice) {
-        '1' { Toggle-Block }
-        '2' { Do-DeepScan }
-        '3' { Show-All-My-Rules }
-        '4' { Search-My-Rules }
-        '5' { Invoke-UpdateApp; $UpdateStatus = Get-UpdateStatus }
-        'Q' { exit }
+    switch ($choice) {
+        "⚡ Toggle Block/Allow (Instant)" { Toggle-Block }
+        "🐢 Deep Scan (Check external rules)" { Do-DeepScan }
+        "📋 List/Manage ALL rules (Interactive)" { Show-InteractiveRules }
+        "🔎 Search inside our rules" { Search-My-Rules }
+        "🔄 Update app" { Invoke-UpdateApp; $UpdateStatus = Get-UpdateStatus }
+        "🚪 Quit" { exit }
+        $null { exit }
     }
-} until ($Choice -eq 'Q')
+}
