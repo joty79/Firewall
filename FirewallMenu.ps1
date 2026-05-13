@@ -17,7 +17,7 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 # -----------------------------------------------------------
 $BlueprintPath = "C:\Users\joty79\.agent-shared\templates\PS_UI_Blueprint.psm1"
 if (Test-Path -LiteralPath $BlueprintPath) {
-    . $BlueprintPath
+    Invoke-Expression (Get-Content -LiteralPath $BlueprintPath -Raw)
 } else {
     Write-Warning "UI Blueprint not found at $BlueprintPath. UI features may fail."
 }
