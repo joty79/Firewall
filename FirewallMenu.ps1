@@ -250,23 +250,7 @@ function Get-ActiveFirewallProfileStatus {
     }
 }
 
-function Get-FastStatus {
-    $BlockedCount = 0
-    foreach ($exe in $ExeFiles) {
-        $rName = "${RulePrefix}$($exe.Name)"
-        if (Get-NetFirewallRule -DisplayName "$rName*" -ErrorAction SilentlyContinue) {
-            $BlockedCount++
-        }
-    }
-    
-    $targetDesc = if ($IsFolder) { "Folder: $FileName ($($ExeFiles.Count) EXEs)" } else { "File: $FileName" }
-    
-    if ($BlockedCount -gt 0) {
-        Write-Host "  $($_C.Fail)$($_C.Bold)[ BLOCKED BY US ($BlockedCount/$($ExeFiles.Count)) ]$($_C.Reset) $($_C.Dim)Target: $targetDesc$($_C.Reset)"
-    } else {
-        Write-Host "  $($_C.OK)$($_C.Bold)[ ALLOWED (BY US) ]$($_C.Reset) $($_C.Dim)Target: $targetDesc$($_C.Reset)"
-    }
-}
+# Get-FastStatus removed (inlined into Main Loop for performance)
 
 function Do-DeepScan {
     Write-Host "`n🔍 Deep Scanning all Windows Rules for target (This takes time)..." -ForegroundColor Cyan
@@ -530,16 +514,32 @@ $options = @(
 )
 
 while ($true) {
+    # 🔸 FIX: Pre-compute heavy status ONCE per loop iteration to avoid UI lag on keystrokes
+    $BlockedCount = 0
+    foreach ($exe in $ExeFiles) {
+        $rName = "${RulePrefix}$($exe.Name)"
+        if (Get-NetFirewallRule -DisplayName "$rName*" -ErrorAction SilentlyContinue) {
+            $BlockedCount++
+        }
+    }
+    $targetDesc = if ($IsFolder) { "Folder: $FileName ($($ExeFiles.Count) EXEs)" } else { "File: $FileName" }
+    
+    $cachedFirewallStatus = Get-ActiveFirewallProfileStatus
+    
     $header = {
         Write-UiBanner -Title "FIREWALL MANAGER" -Subtitle "v$($UpdateStatus.Version) · $($UpdateStatus.Message)"
-        Get-FastStatus
         
-        $firewallStatus = Get-ActiveFirewallProfileStatus
-        if ($firewallStatus.IsDisabled) {
-            Write-Host "  $($_C.Warn)$($firewallStatus.Text)$($_C.Reset)"
-            Write-Host "  $($_C.Dim)$($firewallStatus.Detail)$($_C.Reset)"
+        if ($BlockedCount -gt 0) {
+            Write-Host "  $($_C.Fail)$($_C.Bold)[ BLOCKED BY US ($BlockedCount/$($ExeFiles.Count)) ]$($_C.Reset) $($_C.Dim)Target: $targetDesc$($_C.Reset)"
         } else {
-            Write-Host "  $($_C.OK)$($firewallStatus.Text)$($_C.Reset)"
+            Write-Host "  $($_C.OK)$($_C.Bold)[ ALLOWED (BY US) ]$($_C.Reset) $($_C.Dim)Target: $targetDesc$($_C.Reset)"
+        }
+        
+        if ($cachedFirewallStatus.IsDisabled) {
+            Write-Host "  $($_C.Warn)$($cachedFirewallStatus.Text)$($_C.Reset)"
+            Write-Host "  $($_C.Dim)$($cachedFirewallStatus.Detail)$($_C.Reset)"
+        } else {
+            Write-Host "  $($_C.OK)$($cachedFirewallStatus.Text)$($_C.Reset)"
         }
     }
 
