@@ -20,8 +20,15 @@ if (Test-Path -LiteralPath $TargetItem) {
     $Item = Get-Item -LiteralPath $TargetItem
     $FullPath = $Item.FullName
     $FileName = $Item.Name
+    $IsFolder = $Item.PSIsContainer
 } else {
-    Write-Error "File not found."; Start-Sleep 3; exit
+    Write-Error "File or Folder not found."; Start-Sleep 3; exit
+}
+
+if ($IsFolder) {
+    $ExeFiles = Get-ChildItem -LiteralPath $FullPath -Filter "*.exe" -Recurse -File -ErrorAction SilentlyContinue
+} else {
+    $ExeFiles = @($Item)
 }
 
 $RulePrefix = "_FW_BLOCK_"
@@ -234,20 +241,28 @@ function Get-ActiveFirewallProfileStatus {
 }
 
 function Get-FastStatus {
-    # Ακαριαίος έλεγχος μόνο με το όνομα (Index Search)
-    $MyRules = Get-NetFirewallRule -DisplayName "$RuleName*" -ErrorAction SilentlyContinue
-    if ($MyRules) {
-        Write-Host " [ BLOCKED BY US ] " -NoNewline -ForegroundColor White -BackgroundColor Red
+    $BlockedCount = 0
+    foreach ($exe in $ExeFiles) {
+        $rName = "${RulePrefix}$($exe.Name)"
+        if (Get-NetFirewallRule -DisplayName "$rName*" -ErrorAction SilentlyContinue) {
+            $BlockedCount++
+        }
+    }
+    if ($BlockedCount -gt 0) {
+        Write-Host " [ BLOCKED BY US ($BlockedCount/$($ExeFiles.Count)) ] " -NoNewline -ForegroundColor White -BackgroundColor Red
     } else {
         Write-Host " [ ALLOWED (BY US) ] " -NoNewline -ForegroundColor Black -BackgroundColor Green
     }
-    Write-Host " Target: $FileName" -ForegroundColor Gray
+    $targetDesc = if ($IsFolder) { "Folder: $FileName ($($ExeFiles.Count) EXEs)" } else { "File: $FileName" }
+    Write-Host " Target: $targetDesc" -ForegroundColor Gray
 }
 
 function Do-DeepScan {
-    Write-Host "`n🔍 Deep Scanning all Windows Rules (This takes time)..." -ForegroundColor Cyan
+    Write-Host "`n🔍 Deep Scanning all Windows Rules for target (This takes time)..." -ForegroundColor Cyan
+    $TargetPaths = $ExeFiles.FullName
     $AllRules = Get-NetFirewallRule -ErrorAction SilentlyContinue | Where-Object {
-        ($_ | Get-NetFirewallApplicationFilter -ErrorAction SilentlyContinue).Program -eq $FullPath
+        $prog = ($_ | Get-NetFirewallApplicationFilter -ErrorAction SilentlyContinue).Program
+        $prog -in $TargetPaths
     }
     
     if ($AllRules) {
@@ -259,15 +274,34 @@ function Do-DeepScan {
 }
 
 function Toggle-Block {
-    $Exists = Get-NetFirewallRule -DisplayName "$RuleName*" -ErrorAction SilentlyContinue
+    if ($ExeFiles.Count -eq 0) {
+        Write-Host "`n⚠️ No executables found in this folder." -ForegroundColor Yellow
+        Pause-Menu
+        return
+    }
+
+    $HasRules = $false
+    foreach ($exe in $ExeFiles) {
+        $rName = "${RulePrefix}$($exe.Name)"
+        if (Get-NetFirewallRule -DisplayName "$rName*" -ErrorAction SilentlyContinue) {
+            $HasRules = $true
+            break
+        }
+    }
     
-    if ($Exists) {
-        Remove-NetFirewallRule -DisplayName "$RuleName*"
-        Write-Host "`n✅ Rules Deleted. Access Restored." -ForegroundColor Green
+    if ($HasRules) {
+        Write-Host "`n✅ Rules Deleted. Access Restored for $($ExeFiles.Count) files." -ForegroundColor Green
+        foreach ($exe in $ExeFiles) {
+            $rName = "${RulePrefix}$($exe.Name)"
+            Remove-NetFirewallRule -DisplayName "$rName*" -ErrorAction SilentlyContinue
+        }
     } else {
-        Write-Host "`n⛔ Creating Block Rules..." -ForegroundColor Magenta
-        New-NetFirewallRule -DisplayName "$RuleName (In)" -Program $FullPath -Direction Inbound -Action Block -Profile Any | Out-Null
-        New-NetFirewallRule -DisplayName "$RuleName (Out)" -Program $FullPath -Direction Outbound -Action Block -Profile Any | Out-Null
+        Write-Host "`n⛔ Creating Block Rules for $($ExeFiles.Count) files..." -ForegroundColor Magenta
+        foreach ($exe in $ExeFiles) {
+            $rName = "${RulePrefix}$($exe.Name)"
+            New-NetFirewallRule -DisplayName "$rName (In)" -Program $exe.FullName -Direction Inbound -Action Block -Profile Any | Out-Null
+            New-NetFirewallRule -DisplayName "$rName (Out)" -Program $exe.FullName -Direction Outbound -Action Block -Profile Any | Out-Null
+        }
         Write-Host "✅ Blocked Successfully." -ForegroundColor Green
         $firewallStatus = Get-ActiveFirewallProfileStatus
         if ($firewallStatus.IsDisabled) {
@@ -284,7 +318,28 @@ function Show-All-My-Rules {
     Write-Host "🔵 All Rules Created by This Script:`n" -ForegroundColor Cyan
     $All = Get-NetFirewallRule -DisplayName "${RulePrefix}*" -ErrorAction SilentlyContinue
     if ($All) {
-        $All | Select-Object DisplayName, Direction, Action | Format-Table -AutoSize
+        $RuleData = @()
+        foreach ($r in $All) {
+            $filter = $r | Get-NetFirewallApplicationFilter -ErrorAction SilentlyContinue
+            $path = $filter.Program
+            if ($path) {
+                $dir = Split-Path -Path $path -Parent -ErrorAction SilentlyContinue
+            } else {
+                $dir = "Unknown Path"
+            }
+            $RuleData += [pscustomobject]@{
+                DisplayName = $r.DisplayName
+                Direction = $r.Direction
+                Action = $r.Action
+                Folder = $dir
+            }
+        }
+        
+        $Grouped = $RuleData | Group-Object Folder
+        foreach ($group in $Grouped) {
+            Write-Host "`n📁 $($group.Name)" -ForegroundColor Magenta
+            $group.Group | Select-Object DisplayName, Direction, Action | Format-Table -AutoSize
+        }
     } else {
         Write-Host "⚠️ No rules created by this script yet." -ForegroundColor Yellow
     }

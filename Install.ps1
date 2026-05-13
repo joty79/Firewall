@@ -71,6 +71,8 @@ $script:ProfileJson = @'
   "registry_cleanup_keys": [
     "HKCR\\exefile\\shell\\FirewallManager",
     "HKCU\\Software\\Classes\\exefile\\shell\\FirewallManager",
+    "HKCR\\Directory\\shell\\FirewallManager",
+    "HKCU\\Software\\Classes\\Directory\\shell\\FirewallManager",
     "HKCR\\exefile\\shell\\SystemTools\\shell\\Windows\\shell\\FirewallManager",
     "HKCU\\Software\\Classes\\exefile\\shell\\SystemTools\\shell\\Windows\\shell\\FirewallManager",
     "HKCR\\Applications\\FirewallMenu.ps1",
@@ -84,6 +86,24 @@ $script:ProfileJson = @'
       "name": "(default)",
       "type": "REG_SZ",
       "value": "Firewall Rules"
+    },
+    {
+      "key": "HKCU\\Software\\Classes\\Directory\\shell\\FirewallManager",
+      "name": "(default)",
+      "type": "REG_SZ",
+      "value": "Firewall Rules (Folder)"
+    },
+    {
+      "key": "HKCU\\Software\\Classes\\Directory\\shell\\FirewallManager",
+      "name": "Icon",
+      "type": "REG_SZ",
+      "value": "{InstallRoot}\\.assets\\icons\\firewall.ico"
+    },
+    {
+      "key": "HKCU\\Software\\Classes\\Directory\\shell\\FirewallManager\\command",
+      "name": "(default)",
+      "type": "REG_SZ",
+      "value": "wscript.exe \"{InstallRoot}\\Launch-FirewallMenu.vbs\" \"%1\""
     },
     {
       "key": "HKCU\\Software\\Classes\\exefile\\shell\\FirewallManager",
@@ -103,6 +123,21 @@ $script:ProfileJson = @'
       "key": "HKCU\\Software\\Classes\\exefile\\shell\\FirewallManager",
       "name": "(default)",
       "expected": "Firewall Rules"
+    },
+    {
+      "key": "HKCU\\Software\\Classes\\Directory\\shell\\FirewallManager",
+      "name": "(default)",
+      "expected": "Firewall Rules (Folder)"
+    },
+    {
+      "key": "HKCU\\Software\\Classes\\Directory\\shell\\FirewallManager",
+      "name": "Icon",
+      "expected": "{InstallRoot}\\.assets\\icons\\firewall.ico"
+    },
+    {
+      "key": "HKCU\\Software\\Classes\\Directory\\shell\\FirewallManager\\command",
+      "name": "(default)",
+      "expected": "wscript.exe \"{InstallRoot}\\Launch-FirewallMenu.vbs\" \"%1\""
     },
     {
       "key": "HKCU\\Software\\Classes\\exefile\\shell\\FirewallManager",
