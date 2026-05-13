@@ -2,6 +2,10 @@
 
 ## 2026-05-14
 
+- Bumped `app-metadata.json` to `0.2.2` and moved Firewall Rules back to the top-level `.exe` context menu instead of nesting it under `System Tools`.
+
+## 2026-05-14
+
 - Bumped `app-metadata.json` to `0.2.1` for the shared System Tools menu correction.
 - Regenerated `Install.ps1` from `InstallerCore` so Firewall Rules installs under `System Tools > Windows` for `.exe` files.
 

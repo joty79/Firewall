@@ -43,3 +43,12 @@
 - Guardrail/rule: `Firewall` remains child-only under `SystemTools\shell\Windows\shell\FirewallManager` for `exefile` branches. Keep cleanup for old `AppsWindows` child paths during migration.
 - Files affected: `Install.ps1`, `app-metadata.json`, `CHANGELOG.md`, `PROJECT_RULES.md`, `D:\Users\joty79\scripts\InstallerCore\profiles\Firewall.json`.
 - Validation/tests run: Pending parser validation, local-source install, and HKCU registry readback after regeneration.
+
+### Entry - 2026-05-14 (Firewall top-level .exe verb restored)
+
+- Date: 2026-05-14
+- Problem: Firewall Rules was temporarily nested under `System Tools > Windows` for `.exe` files, but the desired UX is a direct `.exe` context-menu action.
+- Root cause: The shared menu migration treated Firewall like the other SystemTools family children even though its natural trigger is specific to executable files.
+- Guardrail/rule: `Firewall` installs under `HKCU\Software\Classes\exefile\shell\FirewallManager` as a top-level `.exe` verb. Keep cleanup for temporary nested `SystemTools\shell\Windows\shell\FirewallManager` and older `AppsWindows` paths.
+- Files affected: `Install.ps1`, `app-metadata.json`, `CHANGELOG.md`, `PROJECT_RULES.md`, `D:\Users\joty79\scripts\InstallerCore\profiles\Firewall.json`.
+- Validation/tests run: Pending parser validation, local-source install, and HKCU registry readback.
