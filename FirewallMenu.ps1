@@ -312,15 +312,29 @@ function Get-CachedRuleData {
     $All = @(Get-NetFirewallRule -DisplayName "${RulePrefix}*" -ErrorAction SilentlyContinue)
     if ($All.Count -eq 0) { return @() }
 
-    # Batch: pipe all rules to get filters in ONE CIM pass (massively faster than N individual calls)
+    # Batch: pipe all rules to get filters in ONE CIM pass
     $batchFilters = @($All | Get-NetFirewallApplicationFilter -ErrorAction SilentlyContinue)
+
+    # Build lookup by EVERY key we can think of (InstanceID + Name)
     $progMap = @{}
-    foreach ($f in $batchFilters) { $progMap[$f.InstanceID] = $f.Program }
+    foreach ($f in $batchFilters) {
+        if ($f.Program) {
+            $progMap[$f.InstanceID] = $f.Program
+            $progMap[$f.Name]       = $f.Program
+        }
+    }
 
     $result = [System.Collections.Generic.List[pscustomobject]]::new()
     foreach ($r in $All) {
         $path = $progMap[$r.InstanceID]
         if (-not $path) { $path = $progMap[$r.Name] }
+        # Last-resort fallback: individual CIM call (only for unmatched rules)
+        if (-not $path) {
+            try {
+                $f = $r | Get-NetFirewallApplicationFilter -ErrorAction SilentlyContinue
+                if ($f) { $path = $f.Program }
+            } catch {}
+        }
         $dir = if ($path) { Split-Path -Path $path -Parent -ErrorAction SilentlyContinue } else { "Unknown Path" }
         $result.Add([pscustomobject]@{
             DisplayName = $r.DisplayName
@@ -344,21 +358,25 @@ function Show-InteractiveRules {
 
         $Grouped = $cached | Group-Object Folder | Sort-Object Name
 
+        # BMP-safe folder icon
+        $fIcon = [char]0x25B6  # Black right-pointing triangle
+
         $folderOptions = @()
         foreach ($group in $Grouped) {
             $exeCount = ($group.Group | Select-Object -ExpandProperty Path -Unique).Count
-            $folderOptions += "$(([char]0x1F4C1)) $($group.Name) ($exeCount exe, $($group.Group.Count) rules)"
+            $folderOptions += "$fIcon $($group.Name) ($exeCount exe, $($group.Group.Count) rules)"
         }
-        $folderOptions += "$([char]0x1F519) Back"
+        $folderOptions += "$([char]0x2190) Back"
 
         $header = { Write-UiBanner -Title "FIREWALL RULES" -Subtitle "Select a folder to view or manage" }
         $folderChoice = Invoke-ArrowMenu -Items $folderOptions -Title "Blocked Folders" -HeaderBlock $header
 
         if ($null -eq $folderChoice -or $folderChoice -match 'Back$') { return }
 
+        # Match by stripping icon prefix
         $selectedGroup = $Grouped | Where-Object {
             $exeCount = ($_.Group | Select-Object -ExpandProperty Path -Unique).Count
-            "$(([char]0x1F4C1)) $($_.Name) ($exeCount exe, $($_.Group.Count) rules)" -eq $folderChoice
+            "$fIcon $($_.Name) ($exeCount exe, $($_.Group.Count) rules)" -eq $folderChoice
         }
         if ($selectedGroup) {
             Show-FolderRulesInteractive -FolderPath $selectedGroup.Name -CachedRules $cached
@@ -372,7 +390,6 @@ function Show-FolderRulesInteractive {
         [System.Collections.Generic.List[pscustomobject]]$CachedRules
     )
 
-    # Build initial state from cached data (no extra WMI calls)
     $folderRules = @($CachedRules | Where-Object Folder -eq $FolderPath)
     if ($folderRules.Count -eq 0) { return }
 
@@ -380,6 +397,10 @@ function Show-FolderRulesInteractive {
     $toggleState = [ordered]@{}
     $exePaths = @($folderRules | Select-Object -ExpandProperty Path -Unique | Sort-Object)
     foreach ($p in $exePaths) { $toggleState[$p] = $true }
+
+    # BMP-safe icons
+    $iconBlocked  = [char]0x25CF  # ● (filled circle = blocked)
+    $iconOpen     = [char]0x25CB  # ○ (hollow circle = open)
 
     while ($true) {
         $fileOptions = @()
@@ -397,17 +418,17 @@ function Show-FolderRulesInteractive {
             elseif ($outRule) { $dirInfo = "[OUT ONLY]" }
 
             if ($toggleState[$p]) {
-                $label = "$([char]0x1F6E1) $fname $dirInfo"
+                $label = "$iconBlocked BLOCKED  $fname $dirInfo"
             } else {
-                $label = "$([char]0x1F513) $fname [UNBLOCKED - Enter to undo]"
+                $label = "$iconOpen OPEN     $fname  (Enter to re-block)"
             }
             $fileOptions += $label
             $labelToPath[$label] = $p
         }
-        $fileOptions += "$([char]0x1F519) Back"
+        $fileOptions += "$([char]0x2190) Back"
 
         $header = { Write-UiBanner -Title "FOLDER RULES" -Subtitle $FolderPath }
-        $fileChoice = Invoke-ArrowMenu -Items $fileOptions -Title "Toggle rules - Enter = block/unblock, Esc = done" -HeaderBlock $header
+        $fileChoice = Invoke-ArrowMenu -Items $fileOptions -Title "Toggle rules - Enter = toggle, Esc = back" -HeaderBlock $header
 
         if ($null -eq $fileChoice -or $fileChoice -match 'Back$') { return }
 
