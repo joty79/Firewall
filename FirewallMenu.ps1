@@ -393,18 +393,21 @@ function Show-FolderRulesInteractive {
     $folderRules = @($CachedRules | Where-Object Folder -eq $FolderPath)
     if ($folderRules.Count -eq 0) { return }
 
-    # Track toggle state per exe path: $true = blocked, $false = unblocked
+    # Track DESIRED state per exe path: $true = blocked, $false = unblocked
+    # Changes are only applied to Windows Firewall when leaving this menu
     $toggleState = [ordered]@{}
     $exePaths = @($folderRules | Select-Object -ExpandProperty Path -Unique | Sort-Object)
     foreach ($p in $exePaths) { $toggleState[$p] = $true }
 
     # BMP-safe icons
-    $iconBlocked  = [char]0x25CF  # ● (filled circle = blocked)
-    $iconOpen     = [char]0x25CB  # ○ (hollow circle = open)
+    $iconBlocked  = [char]0x25CF  # filled circle = blocked
+    $iconOpen     = [char]0x25CB  # hollow circle = open
+
+    $lastChoice = ''
 
     while ($true) {
         $fileOptions = @()
-        $fileOptions += "$([char]0x26A1) UNBLOCK ALL in this folder"
+        $fileOptions += "$([char]0x26A1) TOGGLE ALL"
 
         $labelToPath = @{}
         foreach ($p in $toggleState.Keys) {
@@ -420,42 +423,59 @@ function Show-FolderRulesInteractive {
             if ($toggleState[$p]) {
                 $label = "$iconBlocked BLOCKED  $fname $dirInfo"
             } else {
-                $label = "$iconOpen OPEN     $fname  (Enter to re-block)"
+                $label = "$iconOpen OPEN     $fname $dirInfo"
             }
             $fileOptions += $label
             $labelToPath[$label] = $p
         }
-        $fileOptions += "$([char]0x2190) Back"
+        $fileOptions += "$([char]0x2190) Apply & Back"
 
-        $header = { Write-UiBanner -Title "FOLDER RULES" -Subtitle $FolderPath }
-        $fileChoice = Invoke-ArrowMenu -Items $fileOptions -Title "Toggle rules - Enter = toggle, Esc = back" -HeaderBlock $header
+        $pendingCount = @($toggleState.Values | Where-Object { -not $_ }).Count
+        $subtitle = if ($pendingCount -gt 0) { "$FolderPath  ($pendingCount pending unblock)" } else { $FolderPath }
 
-        if ($null -eq $fileChoice -or $fileChoice -match 'Back$') { return }
+        $header = { Write-UiBanner -Title "FOLDER RULES" -Subtitle $subtitle }
+        $fileChoice = Invoke-ArrowMenu -Items $fileOptions -Title "Enter = toggle on/off, Esc = apply changes & back" -HeaderBlock $header -CurrentItem $lastChoice
 
-        if ($fileChoice -match 'UNBLOCK ALL') {
-            foreach ($p in @($toggleState.Keys)) {
-                if ($toggleState[$p]) {
+        if ($null -eq $fileChoice -or $fileChoice -match 'Apply.*Back$') {
+            # Apply all pending changes NOW
+            foreach ($p in $toggleState.Keys) {
+                if (-not $toggleState[$p]) {
+                    # Was blocked, now should be unblocked -> remove rules
                     $rName = "${RulePrefix}$(Split-Path $p -Leaf)"
                     Remove-NetFirewallRule -DisplayName "$rName*" -ErrorAction SilentlyContinue
-                    $toggleState[$p] = $false
                 }
             }
+            return
+        }
+
+        if ($fileChoice -match 'TOGGLE ALL') {
+            # If any are blocked, unblock all. If all are open, re-block all.
+            $anyBlocked = @($toggleState.Values | Where-Object { $_ }).Count -gt 0
+            foreach ($p in @($toggleState.Keys)) {
+                $toggleState[$p] = -not $anyBlocked
+            }
+            $lastChoice = $fileChoice
             continue
         }
 
         $selectedPath = $labelToPath[$fileChoice]
         if ($selectedPath) {
+            # Just flip the visual state, no firewall changes yet
+            $toggleState[$selectedPath] = -not $toggleState[$selectedPath]
+
+            # Build what the NEW label will be so -CurrentItem can find it
+            $fname = Split-Path -Path $selectedPath -Leaf
+            $rules = @($folderRules | Where-Object Path -eq $selectedPath)
+            $inRule = ($rules | Where-Object Direction -eq 'Inbound').Count -gt 0
+            $outRule = ($rules | Where-Object Direction -eq 'Outbound').Count -gt 0
+            $dirInfo = ""
+            if ($inRule -and $outRule) { $dirInfo = "[IN+OUT]" }
+            elseif ($inRule) { $dirInfo = "[IN ONLY]" }
+            elseif ($outRule) { $dirInfo = "[OUT ONLY]" }
             if ($toggleState[$selectedPath]) {
-                # Unblock: remove rules
-                $rName = "${RulePrefix}$(Split-Path $selectedPath -Leaf)"
-                Remove-NetFirewallRule -DisplayName "$rName*" -ErrorAction SilentlyContinue
-                $toggleState[$selectedPath] = $false
+                $lastChoice = "$iconBlocked BLOCKED  $fname $dirInfo"
             } else {
-                # Re-block (undo): create rules again
-                $rName = "${RulePrefix}$(Split-Path $selectedPath -Leaf)"
-                New-NetFirewallRule -DisplayName "$rName (In)" -Program $selectedPath -Direction Inbound -Action Block -Profile Any | Out-Null
-                New-NetFirewallRule -DisplayName "$rName (Out)" -Program $selectedPath -Direction Outbound -Action Block -Profile Any | Out-Null
-                $toggleState[$selectedPath] = $true
+                $lastChoice = "$iconOpen OPEN     $fname $dirInfo"
             }
         }
     }
