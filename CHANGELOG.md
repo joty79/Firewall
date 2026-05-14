@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-05-14 (SystemTools Integration)
+
+- Added no-target "Manager Only" mode: when launched from Desktop/Background with no file/folder, opens the interactive rule manager directly.
+- Added large folder safety check: warns and asks confirmation if a folder contains more than 50 executables.
+- Firewall Rules now integrated into SystemTools context menu under Windows submenu for all 4 contexts (file, folder, background, desktop).
+- Old standalone registry entries (exefile/Directory FirewallManager) are cleaned up by SystemTools installer.
+
 ## 2026-05-14
 
 - Bumped version to  .4.0.
