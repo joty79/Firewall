@@ -421,9 +421,9 @@ function Show-FolderRulesInteractive {
             elseif ($outRule) { $dirInfo = "[OUT ONLY]" }
 
             if ($toggleState[$p]) {
-                $label = "$iconBlocked BLOCKED  $fname $dirInfo"
+                $label = "$iconBlocked $($_C.Fail)BLOCKED$($_C.Reset)  $fname $dirInfo"
             } else {
-                $label = "$iconOpen OPEN     $fname $dirInfo"
+                $label = "$iconOpen $($_C.OK)OPEN$($_C.Reset)     $fname $dirInfo"
             }
             $fileOptions += $label
             $labelToPath[$label] = $p
@@ -473,9 +473,9 @@ function Show-FolderRulesInteractive {
             elseif ($inRule) { $dirInfo = "[IN ONLY]" }
             elseif ($outRule) { $dirInfo = "[OUT ONLY]" }
             if ($toggleState[$selectedPath]) {
-                $lastChoice = "$iconBlocked BLOCKED  $fname $dirInfo"
+                $lastChoice = "$iconBlocked $($_C.Fail)BLOCKED$($_C.Reset)  $fname $dirInfo"
             } else {
-                $lastChoice = "$iconOpen OPEN     $fname $dirInfo"
+                $lastChoice = "$iconOpen $($_C.OK)OPEN$($_C.Reset)     $fname $dirInfo"
             }
         }
     }
