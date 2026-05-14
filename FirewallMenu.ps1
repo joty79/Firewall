@@ -308,117 +308,134 @@ function Toggle-Block {
     Start-Sleep -Seconds 1
 }
 
+function Get-CachedRuleData {
+    $All = @(Get-NetFirewallRule -DisplayName "${RulePrefix}*" -ErrorAction SilentlyContinue)
+    if ($All.Count -eq 0) { return @() }
+
+    # Batch: pipe all rules to get filters in ONE CIM pass (massively faster than N individual calls)
+    $batchFilters = @($All | Get-NetFirewallApplicationFilter -ErrorAction SilentlyContinue)
+    $progMap = @{}
+    foreach ($f in $batchFilters) { $progMap[$f.InstanceID] = $f.Program }
+
+    $result = [System.Collections.Generic.List[pscustomobject]]::new()
+    foreach ($r in $All) {
+        $path = $progMap[$r.InstanceID]
+        if (-not $path) { $path = $progMap[$r.Name] }
+        $dir = if ($path) { Split-Path -Path $path -Parent -ErrorAction SilentlyContinue } else { "Unknown Path" }
+        $result.Add([pscustomobject]@{
+            DisplayName = $r.DisplayName
+            Direction   = [string]$r.Direction
+            Folder      = $dir
+            Path        = $path
+            RuleName    = $r.Name
+        })
+    }
+    return ,$result
+}
+
 function Show-InteractiveRules {
     while ($true) {
-        $All = Get-NetFirewallRule -DisplayName "${RulePrefix}*" -ErrorAction SilentlyContinue
-        if (-not $All) {
-            Write-Host "`n⚠️ No rules created by this script yet." -ForegroundColor Yellow
+        $cached = Get-CachedRuleData
+        if ($cached.Count -eq 0) {
+            Write-Host "`n$($_C.Warn)No rules created by this script yet.$($_C.Reset)"
             Pause-Menu
             return
         }
-        
-        $RuleData = @()
-        foreach ($r in $All) {
-            $filter = $r | Get-NetFirewallApplicationFilter -ErrorAction SilentlyContinue
-            $path = $filter.Program
-            if ($path) {
-                $dir = Split-Path -Path $path -Parent -ErrorAction SilentlyContinue
-            } else {
-                $dir = "Unknown Path"
-            }
-            $RuleData += [pscustomobject]@{
-                DisplayName = $r.DisplayName
-                Folder = $dir
-            }
-        }
-        
-        $Grouped = $RuleData | Group-Object Folder | Sort-Object Name
-        
+
+        $Grouped = $cached | Group-Object Folder | Sort-Object Name
+
         $folderOptions = @()
         foreach ($group in $Grouped) {
-            $folderOptions += "📁 $($group.Name) ($($group.Group.Count) rules)"
+            $exeCount = ($group.Group | Select-Object -ExpandProperty Path -Unique).Count
+            $folderOptions += "$(([char]0x1F4C1)) $($group.Name) ($exeCount exe, $($group.Group.Count) rules)"
         }
-        $folderOptions += "🔙 Back"
-        
-        $header = { Write-UiBanner -Title "FIREWALL RULES" -Subtitle "Select a folder to view or manage affected files" }
+        $folderOptions += "$([char]0x1F519) Back"
+
+        $header = { Write-UiBanner -Title "FIREWALL RULES" -Subtitle "Select a folder to view or manage" }
         $folderChoice = Invoke-ArrowMenu -Items $folderOptions -Title "Blocked Folders" -HeaderBlock $header
-        
-        if ($null -eq $folderChoice -or $folderChoice -eq "🔙 Back") { return }
-        
-        $selectedFolderGroup = $Grouped | Where-Object { "📁 $($_.Name) ($($_.Group.Count) rules)" -eq $folderChoice }
-        if ($selectedFolderGroup) {
-            Show-FolderRulesInteractive -FolderPath $selectedFolderGroup.Name
+
+        if ($null -eq $folderChoice -or $folderChoice -match 'Back$') { return }
+
+        $selectedGroup = $Grouped | Where-Object {
+            $exeCount = ($_.Group | Select-Object -ExpandProperty Path -Unique).Count
+            "$(([char]0x1F4C1)) $($_.Name) ($exeCount exe, $($_.Group.Count) rules)" -eq $folderChoice
+        }
+        if ($selectedGroup) {
+            Show-FolderRulesInteractive -FolderPath $selectedGroup.Name -CachedRules $cached
         }
     }
 }
 
 function Show-FolderRulesInteractive {
-    param([string]$FolderPath)
-    
+    param(
+        [string]$FolderPath,
+        [System.Collections.Generic.List[pscustomobject]]$CachedRules
+    )
+
+    # Build initial state from cached data (no extra WMI calls)
+    $folderRules = @($CachedRules | Where-Object Folder -eq $FolderPath)
+    if ($folderRules.Count -eq 0) { return }
+
+    # Track toggle state per exe path: $true = blocked, $false = unblocked
+    $toggleState = [ordered]@{}
+    $exePaths = @($folderRules | Select-Object -ExpandProperty Path -Unique | Sort-Object)
+    foreach ($p in $exePaths) { $toggleState[$p] = $true }
+
     while ($true) {
-        $All = Get-NetFirewallRule -DisplayName "${RulePrefix}*" -ErrorAction SilentlyContinue
-        if (-not $All) { return }
-        
-        $folderRules = @()
-        foreach ($r in $All) {
-            $filter = $r | Get-NetFirewallApplicationFilter -ErrorAction SilentlyContinue
-            $path = $filter.Program
-            if ($path) {
-                $dir = Split-Path -Path $path -Parent -ErrorAction SilentlyContinue
-                if ($dir -eq $FolderPath) {
-                    $folderRules += [pscustomobject]@{
-                        RuleObj = $r
-                        Path = $path
-                        Direction = $r.Direction
-                        Name = $r.Name
-                    }
+        $fileOptions = @()
+        $fileOptions += "$([char]0x26A1) UNBLOCK ALL in this folder"
+
+        $labelToPath = @{}
+        foreach ($p in $toggleState.Keys) {
+            $fname = Split-Path -Path $p -Leaf
+            $rules = @($folderRules | Where-Object Path -eq $p)
+            $inRule = ($rules | Where-Object Direction -eq 'Inbound').Count -gt 0
+            $outRule = ($rules | Where-Object Direction -eq 'Outbound').Count -gt 0
+            $dirInfo = ""
+            if ($inRule -and $outRule) { $dirInfo = "[IN+OUT]" }
+            elseif ($inRule) { $dirInfo = "[IN ONLY]" }
+            elseif ($outRule) { $dirInfo = "[OUT ONLY]" }
+
+            if ($toggleState[$p]) {
+                $label = "$([char]0x1F6E1) $fname $dirInfo"
+            } else {
+                $label = "$([char]0x1F513) $fname [UNBLOCKED - Enter to undo]"
+            }
+            $fileOptions += $label
+            $labelToPath[$label] = $p
+        }
+        $fileOptions += "$([char]0x1F519) Back"
+
+        $header = { Write-UiBanner -Title "FOLDER RULES" -Subtitle $FolderPath }
+        $fileChoice = Invoke-ArrowMenu -Items $fileOptions -Title "Toggle rules - Enter = block/unblock, Esc = done" -HeaderBlock $header
+
+        if ($null -eq $fileChoice -or $fileChoice -match 'Back$') { return }
+
+        if ($fileChoice -match 'UNBLOCK ALL') {
+            foreach ($p in @($toggleState.Keys)) {
+                if ($toggleState[$p]) {
+                    $rName = "${RulePrefix}$(Split-Path $p -Leaf)"
+                    Remove-NetFirewallRule -DisplayName "$rName*" -ErrorAction SilentlyContinue
+                    $toggleState[$p] = $false
                 }
             }
+            continue
         }
-        
-        if ($folderRules.Count -eq 0) { return } # All rules deleted, go back
-        
-        $files = $folderRules | Group-Object Path | Sort-Object Name
-        $fileOptions = @()
-        $fileOptions += "⚡ UNBLOCK ALL (Remove all rules in this folder)"
-        
-        $fileMap = @{}
-        foreach ($f in $files) {
-            $fname = Split-Path -Path $f.Name -Leaf -ErrorAction SilentlyContinue
-            $inRule = ($f.Group | Where-Object Direction -eq 'Inbound') -ne $null
-            $outRule = ($f.Group | Where-Object Direction -eq 'Outbound') -ne $null
-            $status = ""
-            if ($inRule -and $outRule) { $status = "[IN+OUT]" }
-            elseif ($inRule) { $status = "[IN ONLY]" }
-            elseif ($outRule) { $status = "[OUT ONLY]" }
-            
-            $label = "📄 $fname $status"
-            $fileOptions += $label
-            $fileMap[$label] = $f.Group
-        }
-        $fileOptions += "🔙 Back"
-        
-        $header = { Write-UiBanner -Title "FOLDER RULES" -Subtitle $FolderPath }
-        $fileChoice = Invoke-ArrowMenu -Items $fileOptions -Title "Select an executable to UNBLOCK it" -HeaderBlock $header
-        
-        if ($null -eq $fileChoice -or $fileChoice -eq "🔙 Back") { return }
-        
-        if ($fileChoice -eq "⚡ UNBLOCK ALL (Remove all rules in this folder)") {
-            foreach ($r in $folderRules) {
-                Remove-NetFirewallRule -Name $r.Name -ErrorAction SilentlyContinue
+
+        $selectedPath = $labelToPath[$fileChoice]
+        if ($selectedPath) {
+            if ($toggleState[$selectedPath]) {
+                # Unblock: remove rules
+                $rName = "${RulePrefix}$(Split-Path $selectedPath -Leaf)"
+                Remove-NetFirewallRule -DisplayName "$rName*" -ErrorAction SilentlyContinue
+                $toggleState[$selectedPath] = $false
+            } else {
+                # Re-block (undo): create rules again
+                $rName = "${RulePrefix}$(Split-Path $selectedPath -Leaf)"
+                New-NetFirewallRule -DisplayName "$rName (In)" -Program $selectedPath -Direction Inbound -Action Block -Profile Any | Out-Null
+                New-NetFirewallRule -DisplayName "$rName (Out)" -Program $selectedPath -Direction Outbound -Action Block -Profile Any | Out-Null
+                $toggleState[$selectedPath] = $true
             }
-            Write-Host "`n✅ All rules for this folder have been removed." -ForegroundColor Green
-            Start-Sleep -Seconds 1
-            return
-        }
-        
-        $rulesToDelete = $fileMap[$fileChoice]
-        if ($rulesToDelete) {
-            foreach ($r in $rulesToDelete) {
-                Remove-NetFirewallRule -Name $r.Name -ErrorAction SilentlyContinue
-            }
-            Write-Host "`n✅ Rule(s) removed for $($rulesToDelete[0].Path)" -ForegroundColor Green
-            Start-Sleep -Seconds 1
         }
     }
 }
