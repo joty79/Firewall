@@ -25,24 +25,7 @@ if (Test-Path -LiteralPath $BlueprintPath) {
 # -----------------------------------------------------------
 # 🔵 Initialization
 # -----------------------------------------------------------
-# 🔸 FIX: Use -LiteralPath to handle [brackets] correctly
-if (Test-Path -LiteralPath $TargetItem) {
-    $Item = Get-Item -LiteralPath $TargetItem
-    $FullPath = $Item.FullName
-    $FileName = $Item.Name
-    $IsFolder = $Item.PSIsContainer
-} else {
-    Write-Error "File or Folder not found."; Start-Sleep 3; exit
-}
-
-if ($IsFolder) {
-    $ExeFiles = Get-ChildItem -LiteralPath $FullPath -Filter "*.exe" -Recurse -File -ErrorAction SilentlyContinue
-} else {
-    $ExeFiles = @($Item)
-}
-
 $RulePrefix = "_FW_BLOCK_"
-$RuleName = "$RulePrefix$FileName"
 $AppRoot = $PSScriptRoot
 $InstallScript = Join-Path $AppRoot 'Install.ps1'
 $MetadataPath = Join-Path $AppRoot 'app-metadata.json'
@@ -51,6 +34,48 @@ $InstallerLogPath = Join-Path $AppRoot 'logs\installer.log'
 $GitHubRepo = 'joty79/Firewall'
 $GitHubBranch = 'master'
 $UpdateStatus = $null
+
+# No-target mode: launched from Desktop/Background with no specific file/folder
+$ManagerOnly = [string]::IsNullOrWhiteSpace($TargetItem)
+
+if (-not $ManagerOnly) {
+    if (Test-Path -LiteralPath $TargetItem) {
+        $Item = Get-Item -LiteralPath $TargetItem
+        $FullPath = $Item.FullName
+        $FileName = $Item.Name
+        $IsFolder = $Item.PSIsContainer
+    } else {
+        Write-Error "File or Folder not found."; Start-Sleep 3; exit
+    }
+
+    if ($IsFolder) {
+        $ExeFiles = @(Get-ChildItem -LiteralPath $FullPath -Filter "*.exe" -Recurse -File -ErrorAction SilentlyContinue)
+
+        # Large folder safety: warn if too many executables
+        $ExeSafetyThreshold = 50
+        if ($ExeFiles.Count -gt $ExeSafetyThreshold) {
+            Write-Host ""
+            Write-Host "  $($_C.Warn)WARNING: $($ExeFiles.Count) executables found in this folder!$($_C.Reset)" 
+            Write-Host "  $($_C.Dim)$FullPath$($_C.Reset)"
+            Write-Host ""
+            $confirm = Read-Host "  Are you sure you want to proceed? [y/N]"
+            if ($confirm.Trim().ToLowerInvariant() -ne 'y') {
+                Write-Host "  Cancelled." -ForegroundColor Yellow
+                exit
+            }
+        }
+    } else {
+        $ExeFiles = @($Item)
+    }
+
+    $RuleName = "$RulePrefix$FileName"
+} else {
+    $FullPath = ''
+    $FileName = ''
+    $IsFolder = $false
+    $ExeFiles = @()
+    $RuleName = ''
+}
 
 # -----------------------------------------------------------
 # 🔵 Functions
@@ -603,54 +628,90 @@ $UpdateStatus = Get-UpdateStatus
 # -----------------------------------------------------------
 # 🔵 Main Loop
 # -----------------------------------------------------------
-$options = @(
-    "⚡ Toggle Block/Allow (Instant)",
-    "🐢 Deep Scan (Check external rules)",
-    "📋 List/Manage ALL rules (Interactive)",
-    "🔎 Search inside our rules",
-    "🔄 Update app",
-    "🚪 Quit"
-)
+if ($ManagerOnly) {
+    # No target - show manager-only menu (from Desktop/Background)
+    $options = @(
+        "📋 List/Manage ALL rules (Interactive)",
+        "🔎 Search inside our rules",
+        "🔄 Update app",
+        "🚪 Quit"
+    )
 
-while ($true) {
-    # 🔸 FIX: Pre-compute heavy status ONCE per loop iteration to avoid UI lag on keystrokes
-    $BlockedCount = 0
-    foreach ($exe in $ExeFiles) {
-        $rName = "${RulePrefix}$($exe.Name)"
-        if (Get-NetFirewallRule -DisplayName "$rName*" -ErrorAction SilentlyContinue) {
-            $BlockedCount++
+    while ($true) {
+        $cachedFirewallStatus = Get-ActiveFirewallProfileStatus
+
+        $header = {
+            Write-UiBanner -Title "FIREWALL MANAGER" -Subtitle "v$($UpdateStatus.Version) · Rule Manager Mode"
+
+            if ($cachedFirewallStatus.IsDisabled) {
+                Write-Host "  $($_C.Warn)$($cachedFirewallStatus.Text)$($_C.Reset)"
+                Write-Host "  $($_C.Dim)$($cachedFirewallStatus.Detail)$($_C.Reset)"
+            } else {
+                Write-Host "  $($_C.OK)$($cachedFirewallStatus.Text)$($_C.Reset)"
+            }
+        }
+
+        $choice = Invoke-ArrowMenu -Items $options -Title "Main Menu" -HeaderBlock $header
+
+        switch ($choice) {
+            "📋 List/Manage ALL rules (Interactive)" { Show-InteractiveRules }
+            "🔎 Search inside our rules" { Search-My-Rules }
+            "🔄 Update app" { Invoke-UpdateApp; $UpdateStatus = Get-UpdateStatus }
+            "🚪 Quit" { exit }
+            $null { exit }
         }
     }
-    $targetDesc = if ($IsFolder) { "Folder: $FileName ($($ExeFiles.Count) EXEs)" } else { "File: $FileName" }
-    
-    $cachedFirewallStatus = Get-ActiveFirewallProfileStatus
-    
-    $header = {
-        Write-UiBanner -Title "FIREWALL MANAGER" -Subtitle "v$($UpdateStatus.Version) · $($UpdateStatus.Message)"
-        
-        if ($BlockedCount -gt 0) {
-            Write-Host "  $($_C.Fail)$($_C.Bold)[ BLOCKED BY US ($BlockedCount/$($ExeFiles.Count)) ]$($_C.Reset) $($_C.Dim)Target: $targetDesc$($_C.Reset)"
-        } else {
-            Write-Host "  $($_C.OK)$($_C.Bold)[ ALLOWED (BY US) ]$($_C.Reset) $($_C.Dim)Target: $targetDesc$($_C.Reset)"
-        }
-        
-        if ($cachedFirewallStatus.IsDisabled) {
-            Write-Host "  $($_C.Warn)$($cachedFirewallStatus.Text)$($_C.Reset)"
-            Write-Host "  $($_C.Dim)$($cachedFirewallStatus.Detail)$($_C.Reset)"
-        } else {
-            Write-Host "  $($_C.OK)$($cachedFirewallStatus.Text)$($_C.Reset)"
-        }
-    }
+} else {
+    # Normal mode - target file/folder provided
+    $options = @(
+        "⚡ Toggle Block/Allow (Instant)",
+        "🐢 Deep Scan (Check external rules)",
+        "📋 List/Manage ALL rules (Interactive)",
+        "🔎 Search inside our rules",
+        "🔄 Update app",
+        "🚪 Quit"
+    )
 
-    $choice = Invoke-ArrowMenu -Items $options -Title "Main Menu" -HeaderBlock $header
+    while ($true) {
+        $BlockedCount = 0
+        foreach ($exe in $ExeFiles) {
+            $rName = "${RulePrefix}$($exe.Name)"
+            if (Get-NetFirewallRule -DisplayName "$rName*" -ErrorAction SilentlyContinue) {
+                $BlockedCount++
+            }
+        }
+        $targetDesc = if ($IsFolder) { "Folder: $FileName ($($ExeFiles.Count) EXEs)" } else { "File: $FileName" }
 
-    switch ($choice) {
-        "⚡ Toggle Block/Allow (Instant)" { Toggle-Block }
-        "🐢 Deep Scan (Check external rules)" { Do-DeepScan }
-        "📋 List/Manage ALL rules (Interactive)" { Show-InteractiveRules }
-        "🔎 Search inside our rules" { Search-My-Rules }
-        "🔄 Update app" { Invoke-UpdateApp; $UpdateStatus = Get-UpdateStatus }
-        "🚪 Quit" { exit }
-        $null { exit }
+        $cachedFirewallStatus = Get-ActiveFirewallProfileStatus
+
+        $header = {
+            Write-UiBanner -Title "FIREWALL MANAGER" -Subtitle "v$($UpdateStatus.Version) · $($UpdateStatus.Message)"
+
+            if ($BlockedCount -gt 0) {
+                Write-Host "  $($_C.Fail)$($_C.Bold)[ BLOCKED BY US ($BlockedCount/$($ExeFiles.Count)) ]$($_C.Reset) $($_C.Dim)Target: $targetDesc$($_C.Reset)"
+            } else {
+                Write-Host "  $($_C.OK)$($_C.Bold)[ ALLOWED (BY US) ]$($_C.Reset) $($_C.Dim)Target: $targetDesc$($_C.Reset)"
+            }
+
+            if ($cachedFirewallStatus.IsDisabled) {
+                Write-Host "  $($_C.Warn)$($cachedFirewallStatus.Text)$($_C.Reset)"
+                Write-Host "  $($_C.Dim)$($cachedFirewallStatus.Detail)$($_C.Reset)"
+            } else {
+                Write-Host "  $($_C.OK)$($cachedFirewallStatus.Text)$($_C.Reset)"
+            }
+        }
+
+        $choice = Invoke-ArrowMenu -Items $options -Title "Main Menu" -HeaderBlock $header
+
+        switch ($choice) {
+            "⚡ Toggle Block/Allow (Instant)" { Toggle-Block }
+            "🐢 Deep Scan (Check external rules)" { Do-DeepScan }
+            "📋 List/Manage ALL rules (Interactive)" { Show-InteractiveRules }
+            "🔎 Search inside our rules" { Search-My-Rules }
+            "🔄 Update app" { Invoke-UpdateApp; $UpdateStatus = Get-UpdateStatus }
+            "🚪 Quit" { exit }
+            $null { exit }
+        }
     }
 }
+
