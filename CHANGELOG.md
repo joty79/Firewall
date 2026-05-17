@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-05-17
+
+- Bumped `app-metadata.json` to `0.4.1`.
+- Removed the old standalone `Firewall Rules` context-menu verbs for `.exe` files and folders from the `Firewall` installer/profile.
+- `Firewall` now keeps only cleanup for legacy `FirewallManager` keys; the live entrypoint is the shared `SystemTools > Windows > Firewall Rules` menu.
+
 ## 2026-05-14 (SystemTools Integration)
 
 - Added no-target "Manager Only" mode: when launched from Desktop/Background with no file/folder, opens the interactive rule manager directly.

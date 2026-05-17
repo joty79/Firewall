@@ -44,11 +44,11 @@
 - Files affected: `Install.ps1`, `app-metadata.json`, `CHANGELOG.md`, `PROJECT_RULES.md`, `D:\Users\joty79\scripts\InstallerCore\profiles\Firewall.json`.
 - Validation/tests run: Pending parser validation, local-source install, and HKCU registry readback after regeneration.
 
-### Entry - 2026-05-14 (Firewall top-level .exe verb restored)
+### Entry - 2026-05-17 (SystemTools-only live Firewall verb)
 
-- Date: 2026-05-14
-- Problem: Firewall Rules was temporarily nested under `System Tools > Windows` for `.exe` files, but the desired UX is a direct `.exe` context-menu action.
-- Root cause: The shared menu migration treated Firewall like the other SystemTools family children even though its natural trigger is specific to executable files.
-- Guardrail/rule: `Firewall` installs under `HKCU\Software\Classes\exefile\shell\FirewallManager` as a top-level `.exe` verb. Keep cleanup for temporary nested `SystemTools\shell\Windows\shell\FirewallManager` and older `AppsWindows` paths.
-- Files affected: `Install.ps1`, `app-metadata.json`, `CHANGELOG.md`, `PROJECT_RULES.md`, `D:\Users\joty79\scripts\InstallerCore\profiles\Firewall.json`.
-- Validation/tests run: Pending parser validation, local-source install, and HKCU registry readback.
+- Date: 2026-05-17
+- Problem: Old standalone `FirewallManager` verbs for `.exe` files and folders still existed live alongside the shared `SystemTools` entry.
+- Root cause: The `Firewall` generated installer/profile continued to define top-level `HKCU\Software\Classes\exefile\shell\FirewallManager`, and stale generated output still carried `Directory\shell\FirewallManager`.
+- Guardrail/rule: `Firewall` must not install any live top-level `FirewallManager` verbs. Keep only cleanup for old `exefile`/`Directory` `FirewallManager` keys; the supported Explorer entrypoint is the shared `SystemTools > Windows > Firewall Rules` menu.
+- Files affected: `Install.ps1`, `app-metadata.json`, `README.md`, `CHANGELOG.md`, `PROJECT_RULES.md`, `D:\Users\joty79\scripts\InstallerCore\profiles\Firewall.json`, `D:\Users\joty79\scripts\InstallerCore\PROJECT_RULES.md`.
+- Validation/tests run: Pending regeneration, parser validation, local-source update, and HKCU registry readback.

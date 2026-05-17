@@ -80,76 +80,8 @@ $script:ProfileJson = @'
     "HKCR\\exefile\\shell\\SystemTools\\shell\\AppsWindows\\shell\\FirewallManager",
     "HKCU\\Software\\Classes\\exefile\\shell\\SystemTools\\shell\\AppsWindows\\shell\\FirewallManager"
   ],
-  "registry_values": [
-    {
-      "key": "HKCU\\Software\\Classes\\exefile\\shell\\FirewallManager",
-      "name": "(default)",
-      "type": "REG_SZ",
-      "value": "Firewall Rules"
-    },
-    {
-      "key": "HKCU\\Software\\Classes\\Directory\\shell\\FirewallManager",
-      "name": "(default)",
-      "type": "REG_SZ",
-      "value": "Firewall Rules (Folder)"
-    },
-    {
-      "key": "HKCU\\Software\\Classes\\Directory\\shell\\FirewallManager",
-      "name": "Icon",
-      "type": "REG_SZ",
-      "value": "{InstallRoot}\\.assets\\icons\\firewall.ico"
-    },
-    {
-      "key": "HKCU\\Software\\Classes\\Directory\\shell\\FirewallManager\\command",
-      "name": "(default)",
-      "type": "REG_SZ",
-      "value": "wscript.exe \"{InstallRoot}\\Launch-FirewallMenu.vbs\" \"%1\""
-    },
-    {
-      "key": "HKCU\\Software\\Classes\\exefile\\shell\\FirewallManager",
-      "name": "Icon",
-      "type": "REG_SZ",
-      "value": "{InstallRoot}\\.assets\\icons\\firewall.ico"
-    },
-    {
-      "key": "HKCU\\Software\\Classes\\exefile\\shell\\FirewallManager\\command",
-      "name": "(default)",
-      "type": "REG_SZ",
-      "value": "wscript.exe \"{InstallRoot}\\Launch-FirewallMenu.vbs\" \"%1\""
-    }
-  ],
-  "registry_verify": [
-    {
-      "key": "HKCU\\Software\\Classes\\exefile\\shell\\FirewallManager",
-      "name": "(default)",
-      "expected": "Firewall Rules"
-    },
-    {
-      "key": "HKCU\\Software\\Classes\\Directory\\shell\\FirewallManager",
-      "name": "(default)",
-      "expected": "Firewall Rules (Folder)"
-    },
-    {
-      "key": "HKCU\\Software\\Classes\\Directory\\shell\\FirewallManager",
-      "name": "Icon",
-      "expected": "{InstallRoot}\\.assets\\icons\\firewall.ico"
-    },
-    {
-      "key": "HKCU\\Software\\Classes\\Directory\\shell\\FirewallManager\\command",
-      "name": "(default)",
-      "expected": "wscript.exe \"{InstallRoot}\\Launch-FirewallMenu.vbs\" \"%1\""
-    },
-    {
-      "key": "HKCU\\Software\\Classes\\exefile\\shell\\FirewallManager",
-      "name": "Icon",
-      "expected": "{InstallRoot}\\.assets\\icons\\firewall.ico"
-    },
-    {
-      "key": "HKCU\\Software\\Classes\\exefile\\shell\\FirewallManager\\command",
-      "name": "(default)",
-      "expected": "wscript.exe \"{InstallRoot}\\Launch-FirewallMenu.vbs\" \"%1\""
-    }
-  ],
+  "registry_values": [],
+  "registry_verify": [],
   "wrapper_patches": [
     {
       "file": "Launch-FirewallMenu.vbs",

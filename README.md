@@ -17,7 +17,7 @@
 |:-:|------|-------------|
 | 🔒 | **[FirewallMenu.ps1](#-firewallmenups1)** | Elevated PowerShell menu that creates, removes, inspects, and updates per-app firewall tooling. |
 | 👻 | **[Launch-FirewallMenu.vbs](#-launch-firewallmenuvbs)** | Hidden Explorer launcher that opens one elevated Windows Terminal session without the brief first-window flash. |
-| 🧩 | **[FirewallMenu.reg](#-firewallmenureg)** | Registry reference artifact for the `.exe` context-menu command. |
+| 🧩 | **[FirewallMenu.reg](#-firewallmenureg)** | Legacy registry reference artifact kept for development history; the generated installer is the real install path. |
 
 ## 🔒 FirewallMenu.ps1
 
@@ -58,7 +58,7 @@ The header also shows whether Windows Firewall is enabled for the active network
 
 ### Usage
 
-**From Explorer** — *Right-click an `.exe` file and launch `Firewall Manager`.*
+**From Explorer** — *Open `System Tools > Windows > Firewall Rules` from file, folder, folder background, or desktop background context menus.*
 
 **From terminal:**
 ```powershell
@@ -107,7 +107,7 @@ Explorer context menu
 
 ## 🧩 FirewallMenu.reg
 
-> A Windows Registry artifact that adds the script to the `exefile` context menu.
+> A legacy Windows Registry reference artifact retained for development history.
 
 ### The Problem
 - Running the script from terminal every time is less convenient than an Explorer verb.
@@ -116,19 +116,19 @@ Explorer context menu
 
 ### The Solution
 
-The `.reg` file creates a `Firewall Manager` shell command under `HKEY_CLASSES_ROOT\exefile\shell` and launches the hidden VBS wrapper. The portable install path is still the generated `Install.ps1`, which writes HKCU context-menu keys with `{InstallRoot}`-based paths and handles broad HKCU/HKCR cleanup through InstallerCore.
+The checked-in `.reg` file is no longer the installed Explorer path. The portable install flow comes from the generated `Install.ps1`, and the live entry is the shared `SystemTools > Windows > Firewall Rules` command family with `{InstallRoot}`-based paths plus cleanup for older standalone `FirewallManager` keys.
 
 ```text
-HKEY_CLASSES_ROOT\exefile\shell\FirewallManager
+System Tools
         |
-        +--> Display name
-        +--> Icon path
-        '--> command
+        '--> Windows
                |
-               '--> wscript.exe Launch-FirewallMenu.vbs "%1"
+               '--> Firewall Rules
+                      |
+                      '--> wscript.exe Launch-FirewallMenu.vbs ...
 ```
 
-Using a `.reg` artifact keeps the Explorer integration readable during development, but the generated installer is the source of truth for install, update, uninstall, registry verification, and protected cleanup repair.
+The generated installer is the source of truth for install, update, uninstall, registry verification, and protected cleanup repair.
 
 ## 📦 Installation
 
